@@ -6,6 +6,7 @@ const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
+const bcrypt = require("bcryptjs");
 
 const mongoDb = process.env.MONGO_URI;
 mongoose.connect(mongoDb, { useUnifiedTopology: true, useNewUrlParser: true });
@@ -29,20 +30,24 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.urlencoded({ extended: false }));
 
-app.get("/", (req, res) => res.render("index", {user: req.user}));
+app.use(function(req, res, next) {
+    res.locals.currentUser = req.user;
+    next();
+});
+
+app.get("/", (req, res) => res.render("index"));
+
 app.get("/sign-up", (req, res) => res.render("sign-up-form"));
 
-app.post("/sign-up", (req, res, next) => {
-    const user = new User({
-      username: req.body.username,
-      password: req.body.password
-    }).save(err => {
-      if (err) { 
-        return next(err);
-      }
+app.post("/sign-up", async (req, res, next) => {
+    try {
+      const hashedPassword = await bcrypt.hash(req.body.password, 10);
+      await User.create({ username: req.body.username, password: hashedPassword });
       res.redirect("/");
-    });
-  });
+    } catch (err) {
+      return next(err);
+    }
+});
 
 app.post(
     "/log-in",
@@ -65,20 +70,23 @@ app.get("/log-out", (req, res, next) => {
 passport.use(
     new LocalStrategy((username, password, done) => {
       User.findOne({ username: username }, (err, user) => {
-        if (err) { 
+        if (err) {
           return done(err);
         }
         if (!user) {
           return done(null, false, { message: "Incorrect username" });
         }
-        if (user.password !== password) {
-          return done(null, false, { message: "Incorrect password" });
-        }
-        return done(null, user);
+        bcrypt.compare(password, user.password, (err, result) => {
+          if (result) {
+            return done(null, user);
+          } else {
+            return done(null, false, { message: "Incorrect password" });
+          }
+        });
+        // return done(null, user);
       });
     })
   );
-
   passport.serializeUser(function(user, done) {
     done(null, user.id);
   });
