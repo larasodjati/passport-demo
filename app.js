@@ -89,7 +89,7 @@ passport.deserializeUser(function (id, done) {
   })
 })
 
-//server
+// server
 const port = 5000
 const start = async () => {
   try {
